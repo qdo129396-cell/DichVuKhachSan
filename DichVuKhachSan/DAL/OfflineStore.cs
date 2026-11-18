@@ -48,6 +48,7 @@ namespace DichVuKhachSan.DAL
             int invoiceId = NextId(Invoices, x => x.InvoiceId);
             invoiceCode = $"HD{DateTime.Now:yyMMdd}-{invoiceId:D3}";
             Invoices.Add(new InvoiceDTO { InvoiceId = invoiceId, InvoiceCode = invoiceCode, OrderId = newOrderId,
+                CustomerId = order.CustomerId,
                 OrderCode = order.OrderCode, CustomerName = order.CustomerName, RoomNumber = order.RoomNumber,
                 IssuedBy = order.CreatedBy, IssuedByName = order.CreatedByName, InvoiceDate = DateTime.Now,
                 TotalAmount = order.TotalAmount, PaymentStatus = "Unpaid", Notes = order.Notes, OrderDetails = order.Details });

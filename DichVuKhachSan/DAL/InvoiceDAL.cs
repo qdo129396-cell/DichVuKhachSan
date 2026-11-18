@@ -17,7 +17,7 @@ namespace DichVuKhachSan.DAL
         public InvoiceDTO GetById(int invoiceId)
         {
             if (DatabaseHelper.IsOfflineMode) return OfflineStore.Invoices.FirstOrDefault(x => x.InvoiceId == invoiceId);
-            string query = @"SELECT i.InvoiceId, i.InvoiceCode, i.OrderId, i.IssuedBy, i.InvoiceDate,
+            string query = @"SELECT i.InvoiceId, i.InvoiceCode, i.OrderId, o.CustomerId, i.IssuedBy, i.InvoiceDate,
                                     i.DiscountAmount, i.TotalAmount, i.PaymentStatus, i.PaymentMethod, i.PaidAt, i.Notes,
                                     o.OrderCode, o.RoomNumber,
                                     ISNULL(c.FullName, N'Khách vãng lai') AS CustomerName,
@@ -47,7 +47,7 @@ namespace DichVuKhachSan.DAL
             if (DatabaseHelper.IsOfflineMode)
                 return OfflineStore.Invoices.Where(x => (string.IsNullOrWhiteSpace(keyword) || ($"{x.InvoiceCode} {x.OrderCode} {x.CustomerName}").IndexOf(keyword.Trim(), StringComparison.OrdinalIgnoreCase) >= 0) && (string.IsNullOrWhiteSpace(status) || status == "Tất cả" || x.PaymentStatus == status) && (!fromDate.HasValue || x.InvoiceDate.Date >= fromDate.Value.Date) && (!toDate.HasValue || x.InvoiceDate.Date <= toDate.Value.Date)).OrderByDescending(x => x.InvoiceId).ToList();
             List<InvoiceDTO> list = new List<InvoiceDTO>();
-            string query = @"SELECT i.InvoiceId, i.InvoiceCode, i.OrderId, i.IssuedBy, i.InvoiceDate,
+            string query = @"SELECT i.InvoiceId, i.InvoiceCode, i.OrderId, o.CustomerId, i.IssuedBy, i.InvoiceDate,
                                     i.DiscountAmount, i.TotalAmount, i.PaymentStatus, i.PaymentMethod, i.PaidAt, i.Notes,
                                     o.OrderCode, o.RoomNumber,
                                     ISNULL(c.FullName, N'Khách vãng lai') AS CustomerName,
@@ -165,6 +165,44 @@ namespace DichVuKhachSan.DAL
             }
         }
 
+        public bool ProcessPayments(IEnumerable<int> invoiceIds, decimal discountAmount, string paymentMethod, string notes)
+        {
+            var ids = invoiceIds.Distinct().ToList();
+            if (ids.Count == 0) return false;
+            if (DatabaseHelper.IsOfflineMode)
+            {
+                var invoices = OfflineStore.Invoices.Where(x => ids.Contains(x.InvoiceId)).ToList();
+                if (invoices.Count != ids.Count || invoices.Any(x => x.PaymentStatus != "Unpaid"))
+                    throw new InvalidOperationException("Một hoặc nhiều hóa đơn không còn ở trạng thái chưa thanh toán.");
+                decimal remainingDiscount = discountAmount;
+                foreach (var invoice in invoices)
+                {
+                    var applied = Math.Min(remainingDiscount, invoice.TotalAmount);
+                    remainingDiscount -= applied;
+                    invoice.PaymentStatus = "Paid"; invoice.PaymentMethod = paymentMethod; invoice.DiscountAmount = applied; invoice.PaidAt = DateTime.Now; invoice.Notes = notes;
+                    var order = OfflineStore.Orders.FirstOrDefault(x => x.OrderId == invoice.OrderId); if (order != null) order.Status = "Completed";
+                }
+                return true;
+            }
+            using var conn = DatabaseHelper.GetConnection(); conn.Open(); using var trans = conn.BeginTransaction();
+            try
+            {
+                decimal remainingDiscount = discountAmount;
+                foreach (var id in ids)
+                {
+                    decimal total; string status; int orderId;
+                    using (var check = new SqlCommand("SELECT TotalAmount, PaymentStatus, OrderId FROM dbo.Invoices WHERE InvoiceId=@Id", conn, trans))
+                    { check.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id }); using var r = check.ExecuteReader(); if (!r.Read()) throw new InvalidOperationException("Không tìm thấy hóa đơn."); total = Convert.ToDecimal(r["TotalAmount"]); status = r["PaymentStatus"].ToString(); orderId = Convert.ToInt32(r["OrderId"]); }
+                    if (status != "Unpaid") throw new InvalidOperationException("Một hoặc nhiều hóa đơn không còn ở trạng thái chưa thanh toán.");
+                    var applied = Math.Min(remainingDiscount, total); remainingDiscount -= applied;
+                    using (var update = new SqlCommand("UPDATE dbo.Invoices SET PaymentStatus=N'Paid', PaymentMethod=@Method, DiscountAmount=@Discount, PaidAt=SYSDATETIME(), Notes=@Notes WHERE InvoiceId=@Id; UPDATE dbo.ServiceOrders SET Status=N'Completed' WHERE OrderId=@OrderId;", conn, trans))
+                    { update.Parameters.Add(new SqlParameter("@Method", SqlDbType.NVarChar, 30) { Value = paymentMethod }); update.Parameters.Add(new SqlParameter("@Discount", SqlDbType.Decimal) { Value = applied }); update.Parameters.Add(new SqlParameter("@Notes", SqlDbType.NVarChar, 500) { Value = (object)notes ?? DBNull.Value }); update.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id }); update.Parameters.Add(new SqlParameter("@OrderId", SqlDbType.Int) { Value = orderId }); update.ExecuteNonQuery(); }
+                }
+                trans.Commit(); return true;
+            }
+            catch { trans.Rollback(); throw; }
+        }
+
         public bool CancelInvoice(int invoiceId)
         {
             if (DatabaseHelper.IsOfflineMode) { var invoice = OfflineStore.Invoices.FirstOrDefault(x => x.InvoiceId == invoiceId); if (invoice == null) return false; if (invoice.PaymentStatus == "Paid") throw new InvalidOperationException("Không thể hủy hóa đơn đã thanh toán theo quy tắc nghiệp vụ!"); invoice.PaymentStatus = "Cancelled"; var order = OfflineStore.Orders.FirstOrDefault(x => x.OrderId == invoice.OrderId); if (order != null) order.Status = "Cancelled"; return true; }
@@ -229,6 +267,7 @@ namespace DichVuKhachSan.DAL
                 InvoiceId = Convert.ToInt32(row["InvoiceId"]),
                 InvoiceCode = row["InvoiceCode"].ToString(),
                 OrderId = Convert.ToInt32(row["OrderId"]),
+                CustomerId = row["CustomerId"] == DBNull.Value ? (int?)null : Convert.ToInt32(row["CustomerId"]),
                 OrderCode = row["OrderCode"].ToString(),
                 CustomerName = row["CustomerName"].ToString(),
                 RoomNumber = row["RoomNumber"] == DBNull.Value ? "" : row["RoomNumber"].ToString(),

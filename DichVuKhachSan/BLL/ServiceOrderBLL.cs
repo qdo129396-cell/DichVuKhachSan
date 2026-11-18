@@ -80,5 +80,21 @@ namespace DichVuKhachSan.BLL
                 return false;
             }
         }
+
+        public bool UpdateDetailQuantity(int orderDetailId, decimal quantity, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (quantity <= 0) { errorMessage = "Số lượng phải lớn hơn 0."; return false; }
+            try { if (!_orderDAL.UpdateDetailQuantity(orderDetailId, quantity)) { errorMessage = "Không thể sửa dịch vụ đã thanh toán."; return false; } return true; }
+            catch (Exception ex) { errorMessage = ex.Message; return false; }
+        }
+
+        public bool UpdateDetail(ServiceOrderDetailDTO detail, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (detail == null || detail.Quantity <= 0) { errorMessage = "Số lượng phải lớn hơn 0."; return false; }
+            try { if (!_orderDAL.UpdateDetail(detail)) { errorMessage = "Không thể sửa dịch vụ đã thanh toán."; return false; } return true; }
+            catch (Exception ex) { errorMessage = ex.Message; return false; }
+        }
     }
 }

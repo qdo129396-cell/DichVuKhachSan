@@ -50,6 +50,14 @@ namespace DichVuKhachSan.BLL
             }
         }
 
+        public bool PayInvoices(IEnumerable<int> invoiceIds, decimal discountAmount, string paymentMethod, string notes, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (discountAmount < 0) { errorMessage = "Số tiền giảm giá không được là số âm!"; return false; }
+            try { return _invoiceDAL.ProcessPayments(invoiceIds, discountAmount, string.IsNullOrWhiteSpace(paymentMethod) ? "Tiền mặt" : paymentMethod, notes); }
+            catch (Exception ex) { errorMessage = ex.Message; return false; }
+        }
+
         public bool CancelInvoice(int invoiceId, out string errorMessage)
         {
             errorMessage = string.Empty;

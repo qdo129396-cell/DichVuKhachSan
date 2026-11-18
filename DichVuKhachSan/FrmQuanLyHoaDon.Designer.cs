@@ -72,11 +72,11 @@
             this.btnThemDichVu.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.btnThemDichVu.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point);
             this.btnThemDichVu.ForeColor = System.Drawing.Color.White;
-            this.btnThemDichVu.Location = new System.Drawing.Point(850, 45);
+            this.btnThemDichVu.Location = new System.Drawing.Point(850, 88);
             this.btnThemDichVu.Name = "btnThemDichVu";
             this.btnThemDichVu.Size = new System.Drawing.Size(145, 38);
             this.btnThemDichVu.TabIndex = 6;
-            this.btnThemDichVu.Text = "+ Thêm dịch vụ";
+            this.btnThemDichVu.Text = "Sửa thông tin";
             this.btnThemDichVu.UseVisualStyleBackColor = false;
             // 
             // cboThanhToan

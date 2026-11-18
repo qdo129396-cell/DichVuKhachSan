@@ -172,6 +172,51 @@ namespace DichVuKhachSan.DAL
             return DatabaseHelper.ExecuteNonQuery(query, parameters) > 0;
         }
 
+        public bool UpdateDetailQuantity(int orderDetailId, decimal quantity)
+        {
+            if (quantity <= 0) return false;
+            if (DatabaseHelper.IsOfflineMode)
+            {
+                var order = OfflineStore.Orders.FirstOrDefault(x => x.Details.Any(d => d.OrderDetailId == orderDetailId));
+                var detail = order?.Details.FirstOrDefault(x => x.OrderDetailId == orderDetailId); if (detail == null || order.Status == "Completed") return false;
+                detail.Quantity = quantity; order.TotalAmount = order.Details.Sum(x => x.LineTotal);
+                var invoice = OfflineStore.Invoices.FirstOrDefault(x => x.OrderId == order.OrderId); if (invoice != null && invoice.PaymentStatus == "Unpaid") { invoice.TotalAmount = order.TotalAmount; invoice.OrderDetails = order.Details; }
+                return true;
+            }
+            using var conn = DatabaseHelper.GetConnection(); conn.Open(); using var trans = conn.BeginTransaction();
+            try
+            {
+                int orderId;
+                using (var cmd = new SqlCommand("SELECT d.OrderId FROM dbo.ServiceOrderDetails d INNER JOIN dbo.Invoices i ON i.OrderId=d.OrderId WHERE d.OrderDetailId=@Id AND i.PaymentStatus=N'Unpaid'", conn, trans)) { cmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = orderDetailId }); var value = cmd.ExecuteScalar(); if (value == null) return false; orderId = Convert.ToInt32(value); }
+                using (var cmd = new SqlCommand("UPDATE dbo.ServiceOrderDetails SET Quantity=@Quantity WHERE OrderDetailId=@Id; UPDATE dbo.Invoices SET TotalAmount=(SELECT ISNULL(SUM(Quantity*UnitPrice),0) FROM dbo.ServiceOrderDetails WHERE OrderId=@OrderId) WHERE OrderId=@OrderId AND PaymentStatus=N'Unpaid';", conn, trans)) { cmd.Parameters.Add(new SqlParameter("@Quantity", SqlDbType.Decimal) { Value = quantity }); cmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = orderDetailId }); cmd.Parameters.Add(new SqlParameter("@OrderId", SqlDbType.Int) { Value = orderId }); cmd.ExecuteNonQuery(); }
+                trans.Commit(); return true;
+            }
+            catch { trans.Rollback(); throw; }
+        }
+
+        public bool UpdateDetail(ServiceOrderDetailDTO detail)
+        {
+            if (detail == null || detail.Quantity <= 0) return false;
+            if (DatabaseHelper.IsOfflineMode)
+            {
+                var order = OfflineStore.Orders.FirstOrDefault(x => x.Details.Any(d => d.OrderDetailId == detail.OrderDetailId));
+                var old = order?.Details.FirstOrDefault(x => x.OrderDetailId == detail.OrderDetailId); if (old == null || order.Status == "Completed") return false;
+                old.ServiceId = detail.ServiceId; old.ServiceName = detail.ServiceName; old.UnitPrice = detail.UnitPrice; old.Quantity = detail.Quantity; old.Notes = detail.Notes;
+                order.TotalAmount = order.Details.Sum(x => x.LineTotal); var invoice = OfflineStore.Invoices.FirstOrDefault(x => x.OrderId == order.OrderId); if (invoice != null && invoice.PaymentStatus == "Unpaid") invoice.TotalAmount = order.TotalAmount;
+                return true;
+            }
+            using var conn = DatabaseHelper.GetConnection(); conn.Open(); using var trans = conn.BeginTransaction();
+            try
+            {
+                int orderId;
+                using (var cmd = new SqlCommand("SELECT d.OrderId FROM dbo.ServiceOrderDetails d INNER JOIN dbo.Invoices i ON i.OrderId=d.OrderId WHERE d.OrderDetailId=@Id AND i.PaymentStatus=N'Unpaid'", conn, trans)) { cmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = detail.OrderDetailId }); var value = cmd.ExecuteScalar(); if (value == null) return false; orderId = Convert.ToInt32(value); }
+                using (var cmd = new SqlCommand("UPDATE dbo.ServiceOrderDetails SET ServiceId=@ServiceId, Quantity=@Quantity, UnitPrice=@UnitPrice, Notes=@Notes WHERE OrderDetailId=@Id; UPDATE dbo.Invoices SET TotalAmount=(SELECT ISNULL(SUM(Quantity*UnitPrice),0) FROM dbo.ServiceOrderDetails WHERE OrderId=@OrderId) WHERE OrderId=@OrderId AND PaymentStatus=N'Unpaid';", conn, trans))
+                { cmd.Parameters.Add(new SqlParameter("@ServiceId", SqlDbType.Int) { Value = detail.ServiceId }); cmd.Parameters.Add(new SqlParameter("@Quantity", SqlDbType.Decimal) { Value = detail.Quantity }); cmd.Parameters.Add(new SqlParameter("@UnitPrice", SqlDbType.Decimal) { Value = detail.UnitPrice }); cmd.Parameters.Add(new SqlParameter("@Notes", SqlDbType.NVarChar, 250) { Value = (object)detail.Notes ?? DBNull.Value }); cmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = detail.OrderDetailId }); cmd.Parameters.Add(new SqlParameter("@OrderId", SqlDbType.Int) { Value = orderId }); cmd.ExecuteNonQuery(); }
+                trans.Commit(); return true;
+            }
+            catch { trans.Rollback(); throw; }
+        }
+
         public string GenerateNextOrderCode()
         {
             if (DatabaseHelper.IsOfflineMode) return $"DV-{DateTime.Now:yyMMdd}-{OfflineStore.NextId(OfflineStore.Orders, x => x.OrderId):D3}";
