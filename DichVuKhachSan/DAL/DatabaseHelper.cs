@@ -11,7 +11,7 @@ namespace DichVuKhachSan.DAL
         public static bool IsOfflineMode { get; set; }
 
         public static string ConnectionString { get; set; } =
-            @"Server=(localdb)\MSSQLLocalDB;Database=HotelServiceDB;Integrated Security=True;TrustServerCertificate=True;";
+            @"Server=.;Database=HotelServiceDB;Integrated Security=True;TrustServerCertificate=True;";
 
         public static SqlConnection GetConnection()
         {
