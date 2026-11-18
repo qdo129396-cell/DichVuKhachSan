@@ -19,14 +19,8 @@ namespace DichVuKhachSan
             // 1. Kiểm tra kết nối Database khi khởi động
             if (!DatabaseHelper.TestConnection(out string dbError))
             {
-                MessageBox.Show(
-                    "Không thể kết nối đến cơ sở dữ liệu HotelServiceDB trên SQL Server LocalDB.\n\n" +
-                    "Vui lòng đảm bảo SQL Server LocalDB đang hoạt động (Server=(localdb)\\MSSQLLocalDB).\n\n" +
-                    "Chi tiết lỗi: " + dbError,
-                    "Lỗi kết nối cơ sở dữ liệu",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-                return;
+                DatabaseHelper.IsOfflineMode = true;
+                txtUsername.Text = "offline";
             }
 
             // 2. Kiểm tra nếu chưa có tài khoản nào trong hệ thống, đề xuất tạo tài khoản Admin đầu tiên
@@ -154,6 +148,16 @@ namespace DichVuKhachSan
         {
             string username = txtUsername.Text.Trim();
             string password = txtPassword.Text;
+
+            if (DatabaseHelper.IsOfflineMode)
+            {
+                AuthService.BeginOfflineSession(username);
+                FrmTrangChu offlineMainForm = new FrmTrangChu();
+                this.Hide();
+                offlineMainForm.FormClosed += (s, args) => this.Close();
+                offlineMainForm.Show();
+                return;
+            }
 
             // Xử lý tạo admin nếu database chưa có người dùng
             if (!AuthService.HasAnyUser())

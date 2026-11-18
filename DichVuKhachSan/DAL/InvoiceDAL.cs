@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using Microsoft.Data.SqlClient;
 using DichVuKhachSan.DTO;
 
@@ -15,6 +16,7 @@ namespace DichVuKhachSan.DAL
 
         public InvoiceDTO GetById(int invoiceId)
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Invoices.FirstOrDefault(x => x.InvoiceId == invoiceId);
             string query = @"SELECT i.InvoiceId, i.InvoiceCode, i.OrderId, i.IssuedBy, i.InvoiceDate,
                                     i.DiscountAmount, i.TotalAmount, i.PaymentStatus, i.PaymentMethod, i.PaidAt, i.Notes,
                                     o.OrderCode, o.RoomNumber,
@@ -42,6 +44,8 @@ namespace DichVuKhachSan.DAL
 
         public List<InvoiceDTO> SearchAndFilter(string keyword, string status, DateTime? fromDate, DateTime? toDate)
         {
+            if (DatabaseHelper.IsOfflineMode)
+                return OfflineStore.Invoices.Where(x => (string.IsNullOrWhiteSpace(keyword) || ($"{x.InvoiceCode} {x.OrderCode} {x.CustomerName}").IndexOf(keyword.Trim(), StringComparison.OrdinalIgnoreCase) >= 0) && (string.IsNullOrWhiteSpace(status) || status == "Tất cả" || x.PaymentStatus == status) && (!fromDate.HasValue || x.InvoiceDate.Date >= fromDate.Value.Date) && (!toDate.HasValue || x.InvoiceDate.Date <= toDate.Value.Date)).OrderByDescending(x => x.InvoiceId).ToList();
             List<InvoiceDTO> list = new List<InvoiceDTO>();
             string query = @"SELECT i.InvoiceId, i.InvoiceCode, i.OrderId, i.IssuedBy, i.InvoiceDate,
                                     i.DiscountAmount, i.TotalAmount, i.PaymentStatus, i.PaymentMethod, i.PaidAt, i.Notes,
@@ -92,6 +96,7 @@ namespace DichVuKhachSan.DAL
 
         public bool ProcessPayment(int invoiceId, decimal discountAmount, string paymentMethod, string notes)
         {
+            if (DatabaseHelper.IsOfflineMode) { var invoice = OfflineStore.Invoices.FirstOrDefault(x => x.InvoiceId == invoiceId); if (invoice == null) return false; if (invoice.PaymentStatus == "Paid") throw new InvalidOperationException("Hóa đơn này đã được thanh toán trước đó, không thể thanh toán lại!"); invoice.PaymentStatus = "Paid"; invoice.PaymentMethod = paymentMethod; invoice.DiscountAmount = discountAmount; invoice.PaidAt = DateTime.Now; invoice.Notes = notes; var order = OfflineStore.Orders.FirstOrDefault(x => x.OrderId == invoice.OrderId); if (order != null) order.Status = "Completed"; return true; }
             using (var conn = DatabaseHelper.GetConnection())
             {
                 conn.Open();
@@ -162,6 +167,7 @@ namespace DichVuKhachSan.DAL
 
         public bool CancelInvoice(int invoiceId)
         {
+            if (DatabaseHelper.IsOfflineMode) { var invoice = OfflineStore.Invoices.FirstOrDefault(x => x.InvoiceId == invoiceId); if (invoice == null) return false; if (invoice.PaymentStatus == "Paid") throw new InvalidOperationException("Không thể hủy hóa đơn đã thanh toán theo quy tắc nghiệp vụ!"); invoice.PaymentStatus = "Cancelled"; var order = OfflineStore.Orders.FirstOrDefault(x => x.OrderId == invoice.OrderId); if (order != null) order.Status = "Cancelled"; return true; }
             using (var conn = DatabaseHelper.GetConnection())
             {
                 conn.Open();

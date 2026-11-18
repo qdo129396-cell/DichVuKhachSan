@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using Microsoft.Data.SqlClient;
 using DichVuKhachSan.DTO;
 
@@ -10,6 +11,18 @@ namespace DichVuKhachSan.DAL
     {
         public DashboardStatsDTO GetDashboardStats()
         {
+            if (DatabaseHelper.IsOfflineMode)
+            {
+                return new DashboardStatsDTO
+                {
+                    TotalCustomers = OfflineStore.Customers.Count(x => x.IsActive),
+                    TotalServices = OfflineStore.Services.Count(x => x.IsActive),
+                    TotalInvoices = OfflineStore.Invoices.Count,
+                    TodayRevenue = OfflineStore.Invoices.Where(x => x.PaymentStatus == "Paid" && x.InvoiceDate.Date == DateTime.Today).Sum(x => x.FinalAmount),
+                    Revenue7Days = GetRevenueLast7Days(),
+                    RecentActivities = GetRecentActivities(4)
+                };
+            }
             var stats = new DashboardStatsDTO();
 
             // Total Customers
@@ -42,6 +55,8 @@ namespace DichVuKhachSan.DAL
 
         public List<DailyRevenueDTO> GetRevenueLast7Days()
         {
+            if (DatabaseHelper.IsOfflineMode)
+                return Enumerable.Range(0, 7).Select(i => DateTime.Today.AddDays(i - 6)).Select(d => new DailyRevenueDTO { Date = d, DayLabel = GetDayOfWeekLabel(d.DayOfWeek), InvoiceCount = OfflineStore.Invoices.Count(x => x.PaymentStatus == "Paid" && x.InvoiceDate.Date == d), Revenue = OfflineStore.Invoices.Where(x => x.PaymentStatus == "Paid" && x.InvoiceDate.Date == d).Sum(x => x.FinalAmount) }).ToList();
             List<DailyRevenueDTO> list = new List<DailyRevenueDTO>();
             DateTime today = DateTime.Today;
 
@@ -83,6 +98,8 @@ namespace DichVuKhachSan.DAL
 
         public List<DailyRevenueDTO> GetDailyRevenueRange(DateTime fromDate, DateTime toDate)
         {
+            if (DatabaseHelper.IsOfflineMode)
+                return OfflineStore.Invoices.Where(x => x.PaymentStatus == "Paid" && x.InvoiceDate.Date >= fromDate.Date && x.InvoiceDate.Date <= toDate.Date).GroupBy(x => x.InvoiceDate.Date).OrderBy(x => x.Key).Select(x => new DailyRevenueDTO { Date = x.Key, DayLabel = GetDayOfWeekLabel(x.Key.DayOfWeek), InvoiceCount = x.Count(), Revenue = x.Sum(i => i.FinalAmount) }).ToList();
             List<DailyRevenueDTO> list = new List<DailyRevenueDTO>();
             string sql = @"SELECT CAST(InvoiceDate AS DATE) AS RevDate,
                                   COUNT(*) AS InvoiceCount,
@@ -117,6 +134,12 @@ namespace DichVuKhachSan.DAL
 
         public List<CategoryRevenueDTO> GetCategoryRevenueRange(DateTime fromDate, DateTime toDate)
         {
+            if (DatabaseHelper.IsOfflineMode)
+            {
+                var data = OfflineStore.Invoices.Where(x => x.PaymentStatus == "Paid" && x.InvoiceDate.Date >= fromDate.Date && x.InvoiceDate.Date <= toDate.Date).SelectMany(x => x.OrderDetails).GroupBy(x => OfflineStore.Services.FirstOrDefault(s => s.ServiceId == x.ServiceId)?.Category ?? "Khác").Select(x => new { Category = x.Key, Revenue = x.Sum(d => d.LineTotal) }).ToList();
+                var total = data.Sum(x => x.Revenue);
+                return data.OrderByDescending(x => x.Revenue).Select(x => new CategoryRevenueDTO { Category = x.Category, Revenue = x.Revenue, Percentage = total == 0 ? 0 : (float)(x.Revenue * 100 / total) }).ToList();
+            }
             List<CategoryRevenueDTO> list = new List<CategoryRevenueDTO>();
             string sql = @"SELECT s.Category,
                                   ISNULL(SUM(d.Quantity * d.UnitPrice), 0) AS Revenue
@@ -159,6 +182,11 @@ namespace DichVuKhachSan.DAL
 
         public void GetInvoiceCounts(DateTime? fromDate, DateTime? toDate, out int totalCount, out int paidCount, out int unpaidCount, out decimal totalRevenue)
         {
+            if (DatabaseHelper.IsOfflineMode)
+            {
+                var invoices = OfflineStore.Invoices.Where(x => (!fromDate.HasValue || x.InvoiceDate.Date >= fromDate.Value.Date) && (!toDate.HasValue || x.InvoiceDate.Date <= toDate.Value.Date)).ToList();
+                totalCount = invoices.Count; paidCount = invoices.Count(x => x.PaymentStatus == "Paid"); unpaidCount = invoices.Count(x => x.PaymentStatus == "Unpaid"); totalRevenue = invoices.Where(x => x.PaymentStatus == "Paid").Sum(x => x.FinalAmount); return;
+            }
             string sql = @"SELECT 
                                 COUNT(*) AS TotalCount,
                                 ISNULL(SUM(CASE WHEN PaymentStatus = N'Paid' THEN 1 ELSE 0 END), 0) AS PaidCount,
@@ -199,6 +227,13 @@ namespace DichVuKhachSan.DAL
 
         public List<RecentActivityDTO> GetRecentActivities(int top = 5)
         {
+            if (DatabaseHelper.IsOfflineMode)
+            {
+                var activities = OfflineStore.Orders.Select(x => new RecentActivityDTO { Title = "Đặt dịch vụ - " + x.CustomerName, Timestamp = x.OrderDate, Icon = "Đặt dịch vụ" })
+                    .Concat(OfflineStore.Invoices.Where(x => x.PaidAt.HasValue).Select(x => new RecentActivityDTO { Title = "Thanh toán hóa đơn #" + x.InvoiceCode, Timestamp = x.PaidAt.Value, Icon = "Thanh toán" }))
+                    .Concat(OfflineStore.Services.Select(x => new RecentActivityDTO { Title = "Thêm dịch vụ " + x.ServiceName, Timestamp = x.CreatedAt, Icon = "Thêm dịch vụ" }));
+                return activities.OrderByDescending(x => x.Timestamp).Take(top).ToList();
+            }
             List<RecentActivityDTO> list = new List<RecentActivityDTO>();
 
             // Query recent orders and invoices

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using Microsoft.Data.SqlClient;
 using DichVuKhachSan.DTO;
 
@@ -12,6 +13,8 @@ namespace DichVuKhachSan.DAL
         {
             createdOrderId = 0;
             createdInvoiceCode = string.Empty;
+            if (DatabaseHelper.IsOfflineMode)
+                return OfflineStore.CreateOrder(order, details, out createdOrderId, out createdInvoiceCode);
 
             using (var conn = DatabaseHelper.GetConnection())
             {
@@ -89,6 +92,7 @@ namespace DichVuKhachSan.DAL
 
         public List<ServiceOrderDTO> GetAllOrders()
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Orders.OrderByDescending(x => x.OrderId).ToList();
             List<ServiceOrderDTO> list = new List<ServiceOrderDTO>();
             string query = @"SELECT o.OrderId, o.OrderCode, o.CustomerId, o.RoomNumber, o.CreatedBy, o.OrderDate, o.Status, o.Notes,
                                     ISNULL(c.FullName, N'Khách vãng lai') AS CustomerName,
@@ -127,6 +131,7 @@ namespace DichVuKhachSan.DAL
 
         public List<ServiceOrderDetailDTO> GetDetailsByOrderId(int orderId)
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Orders.FirstOrDefault(x => x.OrderId == orderId)?.Details ?? new List<ServiceOrderDetailDTO>();
             List<ServiceOrderDetailDTO> list = new List<ServiceOrderDetailDTO>();
             string query = @"SELECT d.OrderDetailId, d.OrderId, d.ServiceId, d.Quantity, d.UnitPrice,
                                     s.ServiceCode, s.ServiceName, d.Notes
@@ -158,6 +163,7 @@ namespace DichVuKhachSan.DAL
 
         public bool UpdateStatus(int orderId, string status)
         {
+            if (DatabaseHelper.IsOfflineMode) { var order = OfflineStore.Orders.FirstOrDefault(x => x.OrderId == orderId); if (order == null) return false; order.Status = status; return true; }
             string query = "UPDATE dbo.ServiceOrders SET Status = @Status WHERE OrderId = @OrderId";
             SqlParameter[] parameters = {
                 new SqlParameter("@Status", SqlDbType.NVarChar, 20) { Value = status },
@@ -168,6 +174,7 @@ namespace DichVuKhachSan.DAL
 
         public string GenerateNextOrderCode()
         {
+            if (DatabaseHelper.IsOfflineMode) return $"DV-{DateTime.Now:yyMMdd}-{OfflineStore.NextId(OfflineStore.Orders, x => x.OrderId):D3}";
             string datePart = DateTime.Now.ToString("yyMMdd");
             string query = @"SELECT ISNULL(MAX(OrderId), 0) + 1 FROM dbo.ServiceOrders";
             int nextId = Convert.ToInt32(DatabaseHelper.ExecuteScalar(query));

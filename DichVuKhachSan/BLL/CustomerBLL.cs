@@ -31,7 +31,6 @@ namespace DichVuKhachSan.BLL
         public bool AddCustomer(CustomerDTO customer, out string errorMessage)
         {
             errorMessage = string.Empty;
-
             if (string.IsNullOrWhiteSpace(customer.FullName))
             {
                 errorMessage = "Họ tên khách hàng không được để trống!";

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using Microsoft.Data.SqlClient;
 using DichVuKhachSan.DTO;
 
@@ -10,6 +11,7 @@ namespace DichVuKhachSan.DAL
     {
         public List<ServiceDTO> GetAll()
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Services.OrderByDescending(x => x.ServiceId).ToList();
             List<ServiceDTO> list = new List<ServiceDTO>();
             string query = "SELECT ServiceId, ServiceCode, ServiceName, Category, Unit, UnitPrice, Description, IsActive, CreatedAt FROM dbo.Services ORDER BY ServiceId DESC";
             DataTable dt = DatabaseHelper.ExecuteQuery(query);
@@ -22,6 +24,7 @@ namespace DichVuKhachSan.DAL
 
         public List<ServiceDTO> GetActiveServices()
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Services.Where(x => x.IsActive).OrderBy(x => x.ServiceName).ToList();
             List<ServiceDTO> list = new List<ServiceDTO>();
             string query = "SELECT ServiceId, ServiceCode, ServiceName, Category, Unit, UnitPrice, Description, IsActive, CreatedAt FROM dbo.Services WHERE IsActive = 1 ORDER BY ServiceName ASC";
             DataTable dt = DatabaseHelper.ExecuteQuery(query);
@@ -34,6 +37,7 @@ namespace DichVuKhachSan.DAL
 
         public ServiceDTO GetById(int serviceId)
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Services.FirstOrDefault(x => x.ServiceId == serviceId);
             string query = "SELECT ServiceId, ServiceCode, ServiceName, Category, Unit, UnitPrice, Description, IsActive, CreatedAt FROM dbo.Services WHERE ServiceId = @ServiceId";
             SqlParameter[] parameters = {
                 new SqlParameter("@ServiceId", SqlDbType.Int) { Value = serviceId }
@@ -48,6 +52,7 @@ namespace DichVuKhachSan.DAL
 
         public int Insert(ServiceDTO s)
         {
+            if (DatabaseHelper.IsOfflineMode) { s.ServiceId = OfflineStore.NextId(OfflineStore.Services, x => x.ServiceId); s.CreatedAt = DateTime.Now; OfflineStore.Services.Add(s); return s.ServiceId; }
             string query = @"INSERT INTO dbo.Services (ServiceCode, ServiceName, Category, Unit, UnitPrice, Description, IsActive, CreatedAt)
                              VALUES (@ServiceCode, @ServiceName, @Category, @Unit, @UnitPrice, @Description, @IsActive, SYSDATETIME());
                              SELECT SCOPE_IDENTITY();";
@@ -68,6 +73,7 @@ namespace DichVuKhachSan.DAL
 
         public bool Update(ServiceDTO s)
         {
+            if (DatabaseHelper.IsOfflineMode) { var old = OfflineStore.Services.FirstOrDefault(x => x.ServiceId == s.ServiceId); if (old == null) return false; old.ServiceName = s.ServiceName; old.Category = s.Category; old.Unit = s.Unit; old.UnitPrice = s.UnitPrice; old.Description = s.Description; old.IsActive = s.IsActive; return true; }
             string query = @"UPDATE dbo.Services
                              SET ServiceName = @ServiceName, Category = @Category, Unit = @Unit, UnitPrice = @UnitPrice, Description = @Description, IsActive = @IsActive
                              WHERE ServiceId = @ServiceId";
@@ -87,6 +93,7 @@ namespace DichVuKhachSan.DAL
 
         public bool SetStatus(int serviceId, bool isActive)
         {
+            if (DatabaseHelper.IsOfflineMode) { var item = OfflineStore.Services.FirstOrDefault(x => x.ServiceId == serviceId); if (item == null) return false; item.IsActive = isActive; return true; }
             string query = "UPDATE dbo.Services SET IsActive = @IsActive WHERE ServiceId = @ServiceId";
             SqlParameter[] parameters = {
                 new SqlParameter("@IsActive", SqlDbType.Bit) { Value = isActive },
@@ -97,6 +104,7 @@ namespace DichVuKhachSan.DAL
 
         public bool Delete(int serviceId)
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Services.RemoveAll(x => x.ServiceId == serviceId) > 0;
             string query = "DELETE FROM dbo.Services WHERE ServiceId = @ServiceId";
             SqlParameter[] parameters = {
                 new SqlParameter("@ServiceId", SqlDbType.Int) { Value = serviceId }
@@ -106,6 +114,7 @@ namespace DichVuKhachSan.DAL
 
         public bool HasOrders(int serviceId)
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Orders.Any(x => x.Details.Any(d => d.ServiceId == serviceId));
             string query = "SELECT COUNT(*) FROM dbo.ServiceOrderDetails WHERE ServiceId = @ServiceId";
             SqlParameter[] parameters = {
                 new SqlParameter("@ServiceId", SqlDbType.Int) { Value = serviceId }
@@ -115,6 +124,7 @@ namespace DichVuKhachSan.DAL
 
         public List<ServiceDTO> Search(string keyword, string category = "")
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Services.Where(x => ($"{x.ServiceCode} {x.ServiceName}").IndexOf(keyword ?? "", StringComparison.OrdinalIgnoreCase) >= 0 && (string.IsNullOrEmpty(category) || category == "Tất cả" || x.Category == category)).OrderByDescending(x => x.ServiceId).ToList();
             List<ServiceDTO> list = new List<ServiceDTO>();
             string query = @"SELECT ServiceId, ServiceCode, ServiceName, Category, Unit, UnitPrice, Description, IsActive, CreatedAt
                              FROM dbo.Services
@@ -142,6 +152,7 @@ namespace DichVuKhachSan.DAL
 
         public List<string> GetCategories()
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Services.Select(x => x.Category).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().OrderBy(x => x).ToList();
             List<string> list = new List<string>();
             string query = "SELECT DISTINCT Category FROM dbo.Services WHERE Category IS NOT NULL AND Category <> '' ORDER BY Category ASC";
             DataTable dt = DatabaseHelper.ExecuteQuery(query);
@@ -154,6 +165,7 @@ namespace DichVuKhachSan.DAL
 
         public bool IsCodeExists(string serviceCode, int excludeId = 0)
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Services.Any(x => x.ServiceCode == serviceCode && x.ServiceId != excludeId);
             string query = "SELECT COUNT(*) FROM dbo.Services WHERE ServiceCode = @Code AND ServiceId <> @ExcludeId";
             SqlParameter[] parameters = {
                 new SqlParameter("@Code", SqlDbType.NVarChar, 20) { Value = serviceCode },
@@ -164,6 +176,7 @@ namespace DichVuKhachSan.DAL
 
         public string GenerateNextServiceCode()
         {
+            if (DatabaseHelper.IsOfflineMode) return $"DV{OfflineStore.NextId(OfflineStore.Services, x => x.ServiceId):D3}";
             string query = "SELECT ISNULL(MAX(ServiceId), 0) + 1 FROM dbo.Services";
             int nextId = Convert.ToInt32(DatabaseHelper.ExecuteScalar(query));
             return $"DV{nextId:D3}";

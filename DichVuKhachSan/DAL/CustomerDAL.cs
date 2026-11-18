@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using Microsoft.Data.SqlClient;
 using DichVuKhachSan.DTO;
 
@@ -10,6 +11,7 @@ namespace DichVuKhachSan.DAL
     {
         public List<CustomerDTO> GetAll()
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Customers.Where(x => x.IsActive).OrderByDescending(x => x.CustomerId).ToList();
             List<CustomerDTO> list = new List<CustomerDTO>();
             string query = "SELECT CustomerId, CustomerCode, FullName, Phone, Email, Address, Notes, IsActive, CreatedAt FROM dbo.Customers WHERE IsActive = 1 ORDER BY CustomerId DESC";
             DataTable dt = DatabaseHelper.ExecuteQuery(query);
@@ -22,6 +24,7 @@ namespace DichVuKhachSan.DAL
 
         public CustomerDTO GetById(int customerId)
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Customers.FirstOrDefault(x => x.CustomerId == customerId);
             string query = "SELECT CustomerId, CustomerCode, FullName, Phone, Email, Address, Notes, IsActive, CreatedAt FROM dbo.Customers WHERE CustomerId = @CustomerId";
             SqlParameter[] parameters = {
                 new SqlParameter("@CustomerId", SqlDbType.Int) { Value = customerId }
@@ -36,6 +39,7 @@ namespace DichVuKhachSan.DAL
 
         public CustomerDTO GetByCode(string code)
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Customers.FirstOrDefault(x => x.CustomerCode == code);
             string query = "SELECT CustomerId, CustomerCode, FullName, Phone, Email, Address, Notes, IsActive, CreatedAt FROM dbo.Customers WHERE CustomerCode = @CustomerCode";
             SqlParameter[] parameters = {
                 new SqlParameter("@CustomerCode", SqlDbType.NVarChar, 20) { Value = code }
@@ -50,6 +54,7 @@ namespace DichVuKhachSan.DAL
 
         public int Insert(CustomerDTO customer)
         {
+            if (DatabaseHelper.IsOfflineMode) { customer.CustomerId = OfflineStore.NextId(OfflineStore.Customers, x => x.CustomerId); customer.CreatedAt = DateTime.Now; OfflineStore.Customers.Add(customer); return customer.CustomerId; }
             string query = @"INSERT INTO dbo.Customers (CustomerCode, FullName, Phone, Email, Address, Notes, IsActive, CreatedAt)
                              VALUES (@CustomerCode, @FullName, @Phone, @Email, @Address, @Notes, @IsActive, SYSDATETIME());
                              SELECT SCOPE_IDENTITY();";
@@ -70,6 +75,7 @@ namespace DichVuKhachSan.DAL
 
         public bool Update(CustomerDTO customer)
         {
+            if (DatabaseHelper.IsOfflineMode) { var old = OfflineStore.Customers.FirstOrDefault(x => x.CustomerId == customer.CustomerId); if (old == null) return false; old.FullName = customer.FullName; old.Phone = customer.Phone; old.Email = customer.Email; old.Address = customer.Address; old.Notes = customer.Notes; old.IsActive = customer.IsActive; return true; }
             string query = @"UPDATE dbo.Customers
                              SET FullName = @FullName, Phone = @Phone, Email = @Email, Address = @Address, Notes = @Notes, IsActive = @IsActive
                              WHERE CustomerId = @CustomerId";
@@ -89,6 +95,7 @@ namespace DichVuKhachSan.DAL
 
         public bool Delete(int customerId)
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Customers.RemoveAll(x => x.CustomerId == customerId) > 0;
             string query = "DELETE FROM dbo.Customers WHERE CustomerId = @CustomerId";
             SqlParameter[] parameters = {
                 new SqlParameter("@CustomerId", SqlDbType.Int) { Value = customerId }
@@ -98,6 +105,7 @@ namespace DichVuKhachSan.DAL
 
         public bool HasOrders(int customerId)
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Orders.Any(x => x.CustomerId == customerId);
             string query = "SELECT COUNT(*) FROM dbo.ServiceOrders WHERE CustomerId = @CustomerId";
             SqlParameter[] parameters = {
                 new SqlParameter("@CustomerId", SqlDbType.Int) { Value = customerId }
@@ -107,6 +115,7 @@ namespace DichVuKhachSan.DAL
 
         public List<CustomerDTO> Search(string keyword)
         {
+            if (DatabaseHelper.IsOfflineMode) return OfflineStore.Customers.Where(x => x.IsActive && ($"{x.CustomerCode} {x.FullName} {x.Phone} {x.Email}").IndexOf(keyword ?? "", StringComparison.OrdinalIgnoreCase) >= 0).OrderByDescending(x => x.CustomerId).ToList();
             List<CustomerDTO> list = new List<CustomerDTO>();
             string query = @"SELECT CustomerId, CustomerCode, FullName, Phone, Email, Address, Notes, IsActive, CreatedAt 
                              FROM dbo.Customers 
@@ -127,6 +136,7 @@ namespace DichVuKhachSan.DAL
 
         public string GenerateNextCustomerCode()
         {
+            if (DatabaseHelper.IsOfflineMode) return $"KH{OfflineStore.NextId(OfflineStore.Customers, x => x.CustomerId):D3}";
             string query = "SELECT ISNULL(MAX(CustomerId), 0) + 1 FROM dbo.Customers";
             int nextId = Convert.ToInt32(DatabaseHelper.ExecuteScalar(query));
             return $"KH{nextId:D3}";

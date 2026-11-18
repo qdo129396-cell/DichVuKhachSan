@@ -12,6 +12,18 @@ namespace DichVuKhachSan.BLL
 
         public static bool IsLoggedIn => CurrentUser != null;
 
+        public static void BeginOfflineSession(string username)
+        {
+            CurrentUser = new UserDTO
+            {
+                UserId = 0,
+                Username = string.IsNullOrWhiteSpace(username) ? "offline" : username.Trim(),
+                FullName = "Người dùng ngoại tuyến",
+                Role = "Admin",
+                IsActive = true
+            };
+        }
+
         public static bool Login(string username, string password, out string errorMessage)
         {
             errorMessage = string.Empty;
@@ -66,6 +78,9 @@ namespace DichVuKhachSan.BLL
 
         public static bool HasAnyUser()
         {
+            if (DatabaseHelper.IsOfflineMode)
+                return true;
+
             try
             {
                 return _userDAL.CountAll() > 0;

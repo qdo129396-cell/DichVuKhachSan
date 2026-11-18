@@ -6,8 +6,12 @@ namespace DichVuKhachSan.DAL
 {
     public static class DatabaseHelper
     {
+        // When SQL Server is unavailable, DAL classes use the session-only
+        // OfflineStore so the application remains fully usable.
+        public static bool IsOfflineMode { get; set; }
+
         public static string ConnectionString { get; set; } =
-            @"Server=(localdb)\MSSQLLocalDB;Database=HotelServiceDB;Integrated Security=True;TrustServerCertificate=True;";
+            @"Server=.;Database=HotelServiceDB;Integrated Security=True;TrustServerCertificate=True;";
 
         public static SqlConnection GetConnection()
         {
@@ -38,6 +42,9 @@ namespace DichVuKhachSan.DAL
 
         public static DataTable ExecuteQuery(string query, SqlParameter[] parameters = null)
         {
+            if (IsOfflineMode)
+                return new DataTable();
+
             using (var conn = GetConnection())
             {
                 using (var cmd = new SqlCommand(query, conn))
@@ -58,6 +65,9 @@ namespace DichVuKhachSan.DAL
 
         public static int ExecuteNonQuery(string query, SqlParameter[] parameters = null)
         {
+            if (IsOfflineMode)
+                return 0;
+
             using (var conn = GetConnection())
             {
                 using (var cmd = new SqlCommand(query, conn))
@@ -74,6 +84,9 @@ namespace DichVuKhachSan.DAL
 
         public static object ExecuteScalar(string query, SqlParameter[] parameters = null)
         {
+            if (IsOfflineMode)
+                return 0;
+
             using (var conn = GetConnection())
             {
                 using (var cmd = new SqlCommand(query, conn))

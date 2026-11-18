@@ -37,7 +37,6 @@ namespace DichVuKhachSan.BLL
         public bool AddService(ServiceDTO service, out string errorMessage)
         {
             errorMessage = string.Empty;
-
             if (string.IsNullOrWhiteSpace(service.ServiceName))
             {
                 errorMessage = "Tên dịch vụ không được để trống!";
